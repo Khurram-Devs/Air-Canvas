@@ -88,12 +88,14 @@ class AirPaintApp:
         if self.history_index > 0:
             self.history_index -= 1
             self.paint_window = self.canvas_history[self.history_index].copy()
+            self.reset_drawing_data()
 
     def redo(self):
         """Redo last undone action"""
         if self.history_index < len(self.canvas_history) - 1:
             self.history_index += 1
             self.paint_window = self.canvas_history[self.history_index].copy()
+            self.reset_drawing_data()
 
     def draw_rounded_rectangle(self, img, pt1, pt2, color, thickness=-1, radius=10):
         """Draw rounded rectangle"""
@@ -127,9 +129,28 @@ class AirPaintApp:
         """Draw all UI elements on the frame"""
         frame[:80] = self.create_gradient_background(frame[:80])
 
-        button_width = 85
-        start_x = 160
+        button_width = 80
+        total_width = 5 * button_width + 4 * self.BUTTON_MARGIN
+        clear_x = (self.WINDOW_WIDTH - total_width) // 2
+        self.draw_rounded_rectangle(
+            frame,
+            (clear_x, 1),
+            (clear_x + button_width, self.BUTTON_HEIGHT),
+            (220, 220, 220),
+            -1,
+            8,
+        )
+        cv2.putText(
+            frame,
+            "CLEAR",
+            (clear_x + 10, 35),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 0, 0),
+            2,
+        )
 
+        start_x = clear_x + button_width + self.BUTTON_MARGIN
         for i, (color, name) in enumerate(zip(self.colors, self.color_names)):
             x1 = start_x + i * (button_width + self.BUTTON_MARGIN)
             x2 = x1 + button_width
@@ -145,26 +166,88 @@ class AirPaintApp:
 
             text_color = (255, 255, 255) if name != "YELLOW" else (0, 0, 0)
             cv2.putText(
-                frame, name, (x1 + 15, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2
+                frame, name, (x1 + 10, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2
             )
 
-        self.draw_rounded_rectangle(
-            frame, (40, 1), (140, self.BUTTON_HEIGHT), (220, 220, 220), -1, 8
-        )
-        cv2.putText(
-            frame, "CLEAR", (55, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2
-        )
+        tool_x = self.WINDOW_WIDTH - 80 - 10
+        button_h = 40
+        margin = 5
+        tool_y = self.WINDOW_HEIGHT - 20 - button_h
 
-        tool_x = 540
+        if self.tools["save"]:
+            save_y = tool_y - button_h * 0 - margin * 0
+            self.draw_rounded_rectangle(
+                frame,
+                (tool_x, save_y),
+                (tool_x + 80, save_y + button_h),
+                (100, 200, 100),
+                -1,
+                8,
+            )
+            cv2.putText(
+                frame,
+                "SAVE",
+                (tool_x + 15, save_y + 25),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),
+                1,
+            )
+
+        if self.tools["undo_redo"]:
+            redo_y = tool_y - button_h * 1 - margin * 1
+            redo_color = (
+                (180, 180, 180)
+                if self.history_index < len(self.canvas_history) - 1
+                else (120, 120, 120)
+            )
+            self.draw_rounded_rectangle(
+                frame,
+                (tool_x, redo_y),
+                (tool_x + 80, redo_y + button_h),
+                redo_color,
+                -1,
+                6,
+            )
+            cv2.putText(
+                frame,
+                "REDO",
+                (tool_x + 15, redo_y + 25),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 0),
+                1,
+            )
+
+            undo_y = tool_y - button_h * 2 - margin * 2
+            undo_color = (180, 180, 180) if self.history_index > 0 else (120, 120, 120)
+            self.draw_rounded_rectangle(
+                frame,
+                (tool_x, undo_y),
+                (tool_x + 80, undo_y + button_h),
+                undo_color,
+                -1,
+                6,
+            )
+            cv2.putText(
+                frame,
+                "UNDO",
+                (tool_x + 15, undo_y + 25),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 0),
+                1,
+            )
 
         if self.tools["eraser"]:
+            eraser_y = tool_y - button_h * 3 - margin * 3
             eraser_color = (
                 (200, 200, 200) if self.current_tool == "eraser" else (150, 150, 150)
             )
             self.draw_rounded_rectangle(
                 frame,
-                (tool_x, 1),
-                (tool_x + 70, self.BUTTON_HEIGHT),
+                (tool_x, eraser_y),
+                (tool_x + 80, eraser_y + button_h),
                 eraser_color,
                 -1,
                 8,
@@ -172,61 +255,14 @@ class AirPaintApp:
             cv2.putText(
                 frame,
                 "ERASE",
-                (tool_x + 8, 35),
+                (tool_x + 15, eraser_y + 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
                 (0, 0, 0),
-                2,
+                1,
             )
 
-        if self.tools["undo_redo"]:
-            undo_color = (180, 180, 180) if self.history_index > 0 else (120, 120, 120)
-            self.draw_rounded_rectangle(
-                frame, (tool_x, 70), (tool_x + 32, 110), undo_color, -1, 6
-            )
-            cv2.putText(
-                frame,
-                "←",
-                (tool_x + 8, 95),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 0, 0),
-                2,
-            )
-
-            redo_color = (
-                (180, 180, 180)
-                if self.history_index < len(self.canvas_history) - 1
-                else (120, 120, 120)
-            )
-            self.draw_rounded_rectangle(
-                frame, (tool_x + 38, 70), (tool_x + 70, 110), redo_color, -1, 6
-            )
-            cv2.putText(
-                frame,
-                "→",
-                (tool_x + 46, 95),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 0, 0),
-                2,
-            )
-
-        if self.tools["save"]:
-            self.draw_rounded_rectangle(
-                frame, (tool_x, 120), (tool_x + 70, 160), (100, 200, 100), -1, 8
-            )
-            cv2.putText(
-                frame,
-                "SAVE",
-                (tool_x + 10, 145),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 255, 255),
-                2,
-            )
-
-        brush_y = frame.shape[0] - 60
+        brush_y = self.WINDOW_HEIGHT - 60
         for i, size_name in enumerate(self.brush_size_names):
             x = 10 + i * 50
             size_color = (
@@ -245,7 +281,7 @@ class AirPaintApp:
                 1,
             )
 
-        status_y = frame.shape[0] - 25
+        status_y = frame.shape[0] - 20
         status_text = f"Tool: {self.current_tool.upper()}  |  Size: {self.brush_sizes[self.current_brush_size_index]}px"
         if self.current_tool == "brush":
             status_text += f"  |  Color: {self.color_names[self.current_color_index]}"
@@ -255,7 +291,7 @@ class AirPaintApp:
             status_text,
             (10, status_y),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
+            0.45,
             (255, 255, 255),
             1,
         )
@@ -275,29 +311,43 @@ class AirPaintApp:
         """Detect which button was clicked"""
         x, y = point
 
+        button_width = 80
+        total_width = 5 * button_width + 4 * self.BUTTON_MARGIN
+        clear_x = (self.WINDOW_WIDTH - total_width) // 2
+        start_x = clear_x + button_width + self.BUTTON_MARGIN
+
         if y <= self.BUTTON_HEIGHT:
-            if 40 <= x <= 140:
+            if clear_x <= x <= clear_x + button_width:
                 return "clear"
 
-            button_width = 85
-            start_x = 160
             for i in range(len(self.colors)):
                 x1 = start_x + i * (button_width + self.BUTTON_MARGIN)
-                x2 = x1 + button_width
-                if x1 <= x <= x2:
+                if x1 <= x <= x1 + button_width:
                     return f"color_{i}"
 
-            if self.tools["eraser"] and 540 <= x <= 610:
+        tool_x = self.WINDOW_WIDTH - 80 - 10
+        button_h = 40
+        margin = 5
+        tool_y = self.WINDOW_HEIGHT - 20 - button_h
+
+        if self.tools["eraser"]:
+            eraser_y = tool_y - button_h * 3 - margin * 3
+            if eraser_y <= y <= eraser_y + button_h and tool_x <= x <= tool_x + 80:
                 return "eraser"
 
-        if self.tools["undo_redo"] and 70 <= y <= 110:
-            if 540 <= x <= 572:
+        if self.tools["undo_redo"]:
+            undo_y = tool_y - button_h * 2 - margin * 2
+            if undo_y <= y <= undo_y + button_h and tool_x <= x <= tool_x + 80:
                 return "undo"
-            elif 578 <= x <= 610:
+
+            redo_y = tool_y - button_h * 1 - margin * 1
+            if redo_y <= y <= redo_y + button_h and tool_x <= x <= tool_x + 80:
                 return "redo"
 
-        if self.tools["save"] and 120 <= y <= 160 and 540 <= x <= 610:
-            return "save"
+        if self.tools["save"]:
+            save_y = tool_y - button_h * 0 - margin * 0
+            if save_y <= y <= save_y + button_h and tool_x <= x <= tool_x + 80:
+                return "save"
 
         brush_y = self.WINDOW_HEIGHT - 60
         if brush_y <= y <= brush_y + 40:
@@ -463,17 +513,6 @@ class AirPaintApp:
                 settings_window, (100, y - 15), (125, y + 10), checkbox_color, -1, 5
             )
             cv2.rectangle(settings_window, (100, y - 15), (125, y + 10), (0, 0, 0), 2)
-
-            if self.tools[key]:
-                cv2.putText(
-                    settings_window,
-                    "✓",
-                    (105, y + 5),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (255, 255, 255),
-                    2,
-                )
 
             cv2.putText(
                 settings_window,
