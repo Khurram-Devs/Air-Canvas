@@ -15,8 +15,8 @@ class AirPaintApp:
         self.BUTTON_HEIGHT = 50
         self.BUTTON_MARGIN = 5
 
-        self.colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255)]
-        self.color_names = ["BLUE", "GREEN", "RED", "YELLOW"]
+        self.colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0), (0, 255, 255)]
+        self.color_names = ["R", "G", "B", "Y"]
         self.current_color_index = 0
 
         self.brush_sizes = [2, 5, 8, 12]
@@ -142,7 +142,7 @@ class AirPaintApp:
             )
 
         # Colors
-        color_width = 50
+        color_width = 40
         start_x = start_x + 4 * (brush_width + self.BUTTON_MARGIN)
         for i, (color, name) in enumerate(zip(self.colors, self.color_names)):
             x1 = start_x + i * (color_width + self.BUTTON_MARGIN)
@@ -167,7 +167,7 @@ class AirPaintApp:
             )
 
         # Clear
-        other_width = 50
+        other_width = 40
         start_x = start_x + 4 * (color_width + self.BUTTON_MARGIN)
         clear_x = start_x
         self.draw_rounded_rectangle(
@@ -303,7 +303,7 @@ class AirPaintApp:
                 return f"brush_size_{i}"
 
         # Colors
-        color_width = 50
+        color_width = 40
         start_x = start_x + 4 * (brush_width + self.BUTTON_MARGIN)
         for i in range(len(self.colors)):
             x1 = start_x + i * (color_width + self.BUTTON_MARGIN)
@@ -311,7 +311,7 @@ class AirPaintApp:
                 return f"color_{i}"
 
         # Clear
-        other_width = 50
+        other_width = 40
         start_x = start_x + 4 * (color_width + self.BUTTON_MARGIN)
         if start_x <= x <= start_x + other_width:
             return "clear"
