@@ -12,8 +12,8 @@ class AirPaintApp:
     def __init__(self):
         self.WINDOW_WIDTH = 640
         self.WINDOW_HEIGHT = 480
-        self.BUTTON_HEIGHT = 60
-        self.BUTTON_MARGIN = 10
+        self.BUTTON_HEIGHT = 50
+        self.BUTTON_MARGIN = 5
 
         self.colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255)]
         self.color_names = ["BLUE", "GREEN", "RED", "YELLOW"]
@@ -21,7 +21,7 @@ class AirPaintApp:
 
         self.brush_sizes = [2, 5, 8, 12]
         self.brush_size_names = ["XS", "S", "M", "L"]
-        self.current_brush_size_index = 3
+        self.current_brush_size_index = 1
 
         self.tools = {
             "eraser": True,
@@ -30,10 +30,10 @@ class AirPaintApp:
         }
         self.current_tool = "brush"
 
-        self.reset_drawing_data()
+        self.last_pos = None
+        self.drawing_mode = False
 
         self.last_tool_change = 0
-        self.drawing_mode = False
         self.hover_button = None
 
         self.mp_hands = mp.solutions.hands
@@ -52,14 +52,6 @@ class AirPaintApp:
         self.prev_pinch = False
 
         self.create_paint_window()
-
-    def reset_drawing_data(self):
-        """Reset all drawing data structures"""
-        self.bpoints = [deque(maxlen=1024)]
-        self.gpoints = [deque(maxlen=1024)]
-        self.rpoints = [deque(maxlen=1024)]
-        self.ypoints = [deque(maxlen=1024)]
-        self.bindex = self.gindex = self.rindex = self.yindex = 0
 
     def create_paint_window(self):
         """Create the paint canvas"""
@@ -88,14 +80,12 @@ class AirPaintApp:
         if self.history_index > 0:
             self.history_index -= 1
             self.paint_window = self.canvas_history[self.history_index].copy()
-            self.reset_drawing_data()
 
     def redo(self):
         """Redo last undone action"""
         if self.history_index < len(self.canvas_history) - 1:
             self.history_index += 1
             self.paint_window = self.canvas_history[self.history_index].copy()
-            self.reset_drawing_data()
 
     def draw_rounded_rectangle(self, img, pt1, pt2, color, thickness=-1, radius=10):
         """Draw rounded rectangle"""
@@ -127,161 +117,151 @@ class AirPaintApp:
 
     def draw_ui_elements(self, frame):
         """Draw all UI elements on the frame"""
-        frame[:80] = self.create_gradient_background(frame[:80])
-
-        button_width = 80
-        total_width = 5 * button_width + 4 * self.BUTTON_MARGIN
-        clear_x = (self.WINDOW_WIDTH - total_width) // 2
-        self.draw_rounded_rectangle(
-            frame,
-            (clear_x, 1),
-            (clear_x + button_width, self.BUTTON_HEIGHT),
-            (220, 220, 220),
-            -1,
-            8,
-        )
-        cv2.putText(
-            frame,
-            "CLEAR",
-            (clear_x + 10, 35),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 0, 0),
-            2,
+        frame[: self.BUTTON_HEIGHT + 10] = self.create_gradient_background(
+            frame[: self.BUTTON_HEIGHT + 10]
         )
 
-        start_x = clear_x + button_width + self.BUTTON_MARGIN
+        # Brush sizes
+        brush_width = 40
+        start_x = 10
+        for i, size_name in enumerate(self.brush_size_names):
+            x1 = start_x + i * (brush_width + self.BUTTON_MARGIN)
+            x2 = x1 + brush_width
+            size_color = (
+                (100, 150, 200) if i == self.current_brush_size_index else (80, 80, 80)
+            )
+            self.draw_rounded_rectangle(frame, (x1, 5), (x2, 45), size_color, -1, 6)
+            cv2.putText(
+                frame,
+                size_name,
+                (x1 + 5, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),
+                1,
+            )
+
+        # Colors
+        color_width = 50
+        start_x = start_x + 4 * (brush_width + self.BUTTON_MARGIN)
         for i, (color, name) in enumerate(zip(self.colors, self.color_names)):
-            x1 = start_x + i * (button_width + self.BUTTON_MARGIN)
-            x2 = x1 + button_width
+            x1 = start_x + i * (color_width + self.BUTTON_MARGIN)
+            x2 = x1 + color_width
 
             button_color = (
                 color
                 if i == self.current_color_index
                 else tuple(int(c * 0.7) for c in color)
             )
-            self.draw_rounded_rectangle(
-                frame, (x1, 1), (x2, self.BUTTON_HEIGHT), button_color, -1, 8
-            )
+            self.draw_rounded_rectangle(frame, (x1, 5), (x2, 45), button_color, -1, 8)
 
             text_color = (255, 255, 255) if name != "YELLOW" else (0, 0, 0)
             cv2.putText(
-                frame, name, (x1 + 10, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2
-            )
-
-        tool_x = self.WINDOW_WIDTH - 80 - 10
-        button_h = 40
-        margin = 5
-        tool_y = self.WINDOW_HEIGHT - 20 - button_h
-
-        if self.tools["save"]:
-            save_y = tool_y - button_h * 0 - margin * 0
-            self.draw_rounded_rectangle(
                 frame,
-                (tool_x, save_y),
-                (tool_x + 80, save_y + button_h),
-                (100, 200, 100),
-                -1,
-                8,
-            )
-            cv2.putText(
-                frame,
-                "SAVE",
-                (tool_x + 15, save_y + 25),
+                name[:3],
+                (x1 + 10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 255, 255),
+                0.4,
+                text_color,
                 1,
             )
 
-        if self.tools["undo_redo"]:
-            redo_y = tool_y - button_h * 1 - margin * 1
-            redo_color = (
-                (180, 180, 180)
-                if self.history_index < len(self.canvas_history) - 1
-                else (120, 120, 120)
-            )
-            self.draw_rounded_rectangle(
-                frame,
-                (tool_x, redo_y),
-                (tool_x + 80, redo_y + button_h),
-                redo_color,
-                -1,
-                6,
-            )
-            cv2.putText(
-                frame,
-                "REDO",
-                (tool_x + 15, redo_y + 25),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 0),
-                1,
-            )
+        # Clear
+        other_width = 50
+        start_x = start_x + 4 * (color_width + self.BUTTON_MARGIN)
+        clear_x = start_x
+        self.draw_rounded_rectangle(
+            frame, (clear_x, 5), (clear_x + other_width, 45), (220, 220, 220), -1, 8
+        )
+        cv2.putText(
+            frame,
+            "CLR",
+            (clear_x + 10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            (0, 0, 0),
+            1,
+        )
 
-            undo_y = tool_y - button_h * 2 - margin * 2
-            undo_color = (180, 180, 180) if self.history_index > 0 else (120, 120, 120)
-            self.draw_rounded_rectangle(
-                frame,
-                (tool_x, undo_y),
-                (tool_x + 80, undo_y + button_h),
-                undo_color,
-                -1,
-                6,
-            )
-            cv2.putText(
-                frame,
-                "UNDO",
-                (tool_x + 15, undo_y + 25),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 0),
-                1,
-            )
-
+        # Erase
+        erase_x = clear_x + other_width + self.BUTTON_MARGIN
         if self.tools["eraser"]:
-            eraser_y = tool_y - button_h * 3 - margin * 3
             eraser_color = (
                 (200, 200, 200) if self.current_tool == "eraser" else (150, 150, 150)
             )
             self.draw_rounded_rectangle(
                 frame,
-                (tool_x, eraser_y),
-                (tool_x + 80, eraser_y + button_h),
+                (erase_x, 5),
+                (erase_x + other_width, 45),
                 eraser_color,
                 -1,
                 8,
             )
             cv2.putText(
                 frame,
-                "ERASE",
-                (tool_x + 15, eraser_y + 25),
+                "ERS",
+                (erase_x + 10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
+                0.4,
                 (0, 0, 0),
                 1,
             )
 
-        brush_y = self.WINDOW_HEIGHT - 60
-        for i, size_name in enumerate(self.brush_size_names):
-            x = 10 + i * 50
-            size_color = (
-                (100, 150, 200) if i == self.current_brush_size_index else (80, 80, 80)
-            )
+        # Undo
+        undo_x = erase_x + other_width + self.BUTTON_MARGIN
+        if self.tools["undo_redo"]:
+            undo_color = (180, 180, 180) if self.history_index > 0 else (120, 120, 120)
             self.draw_rounded_rectangle(
-                frame, (x, brush_y), (x + 40, brush_y + 40), size_color, -1, 6
+                frame, (undo_x, 5), (undo_x + other_width, 45), undo_color, -1, 6
             )
             cv2.putText(
                 frame,
-                size_name,
-                (x + 8, brush_y + 25),
+                "UND",
+                (undo_x + 10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
+                0.4,
+                (0, 0, 0),
+                1,
+            )
+
+        # Redo
+        redo_x = undo_x + other_width + self.BUTTON_MARGIN
+        if self.tools["undo_redo"]:
+            redo_color = (
+                (180, 180, 180)
+                if self.history_index < len(self.canvas_history) - 1
+                else (120, 120, 120)
+            )
+            self.draw_rounded_rectangle(
+                frame, (redo_x, 5), (redo_x + other_width, 45), redo_color, -1, 6
+            )
+            cv2.putText(
+                frame,
+                "RDO",
+                (redo_x + 10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (0, 0, 0),
+                1,
+            )
+
+        # Save
+        save_x = redo_x + other_width + self.BUTTON_MARGIN
+        if self.tools["save"]:
+            self.draw_rounded_rectangle(
+                frame, (save_x, 5), (save_x + other_width, 45), (100, 200, 100), -1, 8
+            )
+            cv2.putText(
+                frame,
+                "SAV",
+                (save_x + 10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
                 (255, 255, 255),
                 1,
             )
 
-        status_y = frame.shape[0] - 20
+        status_y = self.WINDOW_HEIGHT - 10
         status_text = f"Tool: {self.current_tool.upper()}  |  Size: {self.brush_sizes[self.current_brush_size_index]}px"
         if self.current_tool == "brush":
             status_text += f"  |  Color: {self.color_names[self.current_color_index]}"
@@ -291,7 +271,7 @@ class AirPaintApp:
             status_text,
             (10, status_y),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.45,
+            0.4,
             (255, 255, 255),
             1,
         )
@@ -311,57 +291,56 @@ class AirPaintApp:
         """Detect which button was clicked"""
         x, y = point
 
-        button_width = 80
-        total_width = 5 * button_width + 4 * self.BUTTON_MARGIN
-        clear_x = (self.WINDOW_WIDTH - total_width) // 2
-        start_x = clear_x + button_width + self.BUTTON_MARGIN
+        if y > self.BUTTON_HEIGHT + 10:
+            return None
 
-        if y <= self.BUTTON_HEIGHT:
-            if clear_x <= x <= clear_x + button_width:
-                return "clear"
+        # Brush sizes
+        brush_width = 40
+        start_x = 10
+        for i in range(len(self.brush_size_names)):
+            x1 = start_x + i * (brush_width + self.BUTTON_MARGIN)
+            if x1 <= x <= x1 + brush_width:
+                return f"brush_size_{i}"
 
-            for i in range(len(self.colors)):
-                x1 = start_x + i * (button_width + self.BUTTON_MARGIN)
-                if x1 <= x <= x1 + button_width:
-                    return f"color_{i}"
+        # Colors
+        color_width = 50
+        start_x = start_x + 4 * (brush_width + self.BUTTON_MARGIN)
+        for i in range(len(self.colors)):
+            x1 = start_x + i * (color_width + self.BUTTON_MARGIN)
+            if x1 <= x <= x1 + color_width:
+                return f"color_{i}"
 
-        tool_x = self.WINDOW_WIDTH - 80 - 10
-        button_h = 40
-        margin = 5
-        tool_y = self.WINDOW_HEIGHT - 20 - button_h
+        # Clear
+        other_width = 50
+        start_x = start_x + 4 * (color_width + self.BUTTON_MARGIN)
+        if start_x <= x <= start_x + other_width:
+            return "clear"
 
-        if self.tools["eraser"]:
-            eraser_y = tool_y - button_h * 3 - margin * 3
-            if eraser_y <= y <= eraser_y + button_h and tool_x <= x <= tool_x + 80:
-                return "eraser"
+        # Erase
+        start_x += other_width + self.BUTTON_MARGIN
+        if self.tools["eraser"] and start_x <= x <= start_x + other_width:
+            return "eraser"
 
-        if self.tools["undo_redo"]:
-            undo_y = tool_y - button_h * 2 - margin * 2
-            if undo_y <= y <= undo_y + button_h and tool_x <= x <= tool_x + 80:
-                return "undo"
+        # Undo
+        start_x += other_width + self.BUTTON_MARGIN
+        if self.tools["undo_redo"] and start_x <= x <= start_x + other_width:
+            return "undo"
 
-            redo_y = tool_y - button_h * 1 - margin * 1
-            if redo_y <= y <= redo_y + button_h and tool_x <= x <= tool_x + 80:
-                return "redo"
+        # Redo
+        start_x += other_width + self.BUTTON_MARGIN
+        if self.tools["undo_redo"] and start_x <= x <= start_x + other_width:
+            return "redo"
 
-        if self.tools["save"]:
-            save_y = tool_y - button_h * 0 - margin * 0
-            if save_y <= y <= save_y + button_h and tool_x <= x <= tool_x + 80:
-                return "save"
-
-        brush_y = self.WINDOW_HEIGHT - 60
-        if brush_y <= y <= brush_y + 40:
-            for i in range(len(self.brush_size_names)):
-                x1 = 10 + i * 50
-                if x1 <= x <= x1 + 40:
-                    return f"brush_size_{i}"
+        # Save
+        start_x += other_width + self.BUTTON_MARGIN
+        if self.tools["save"] and start_x <= x <= start_x + other_width:
+            return "save"
 
         return None
 
     def handle_button_action(self, action):
         """Handle button actions"""
         if action == "clear":
-            self.reset_drawing_data()
             self.paint_window[:] = 255
             self.save_to_history()
 
@@ -372,7 +351,7 @@ class AirPaintApp:
             self.last_tool_change = time.time()
 
         elif action == "eraser":
-            self.current_tool = "eraser"
+            self.current_tool = "eraser" if self.current_tool != "eraser" else "brush"
             self.last_tool_change = time.time()
 
         elif action == "undo":
@@ -452,25 +431,6 @@ class AirPaintApp:
 
         return finger_pos, is_drawing, pinch_event
 
-    def draw_points_on_canvas(self, img, points_lists, colors):
-        """Draw all points on the image"""
-        for i, point_list in enumerate(points_lists):
-            for j, deque_points in enumerate(point_list):
-                if len(deque_points) > 1:
-                    points = list(deque_points)
-                    for k in range(1, len(points)):
-                        if points[k - 1] is None or points[k] is None:
-                            continue
-
-                        brush_size = self.brush_sizes[self.current_brush_size_index]
-                        cv2.line(
-                            img,
-                            points[k - 1],
-                            points[k],
-                            colors[i],
-                            brush_size,
-                        )
-
     def show_settings_screen(self):
         """Show tool selection screen"""
         settings_window = np.ones((400, 600, 3), dtype=np.uint8) * 240
@@ -509,8 +469,9 @@ class AirPaintApp:
             y = y_start + i * 45
 
             checkbox_color = (100, 200, 100) if self.tools[key] else (200, 100, 100)
-            self.draw_rounded_rectangle(
-                settings_window, (100, y - 15), (125, y + 10), checkbox_color, -1, 5
+            thickness = -1 if self.tools[key] else 2
+            cv2.rectangle(
+                settings_window, (100, y - 15), (125, y + 10), checkbox_color, thickness
             )
             cv2.rectangle(settings_window, (100, y - 15), (125, y + 10), (0, 0, 0), 2)
 
@@ -617,75 +578,51 @@ class AirPaintApp:
                     cursor_color = (0, 255, 0) if is_drawing else (0, 0, 255)
                     cv2.circle(frame, finger_pos, 8, cursor_color, -1)
 
-                    if is_drawing and self.current_tool == "brush":
-                        brush_size = self.brush_sizes[self.current_brush_size_index]
-                        cv2.circle(
-                            frame,
-                            finger_pos,
-                            brush_size,
-                            self.colors[self.current_color_index],
-                            2,
-                        )
-                        if self.current_color_index == 0:
-                            self.bpoints[self.bindex].appendleft(finger_pos)
-                        elif self.current_color_index == 1:
-                            self.gpoints[self.gindex].appendleft(finger_pos)
-                        elif self.current_color_index == 2:
-                            self.rpoints[self.rindex].appendleft(finger_pos)
-                        elif self.current_color_index == 3:
-                            self.ypoints[self.yindex].appendleft(finger_pos)
-
-                    elif is_drawing and self.current_tool == "eraser":
-                        erase_size = self.brush_sizes[self.current_brush_size_index] * 3
-                        cv2.circle(
-                            frame,
-                            finger_pos,
-                            erase_size,
-                            (0, 0, 0),
-                            2,
-                        )
-                        cv2.circle(
-                            self.paint_window,
-                            finger_pos,
-                            erase_size,
-                            (255, 255, 255),
-                            -1,
-                        )
-
                     if pinch_event:
                         button_action = self.detect_button_click(finger_pos)
                         if button_action:
                             self.handle_button_action(button_action)
 
+                    if is_drawing and finger_pos[1] > self.BUTTON_HEIGHT + 20:
+                        brush_size = self.brush_sizes[self.current_brush_size_index]
+                        if self.current_tool == "eraser":
+                            draw_color = (255, 255, 255)
+                            brush_size *= 3
+                            preview_color = (0, 0, 0)
+                        else:
+                            draw_color = self.colors[self.current_color_index]
+                            preview_color = draw_color
+
+                        cv2.circle(
+                            frame,
+                            finger_pos,
+                            brush_size,
+                            preview_color,
+                            2,
+                        )
+
+                        if self.last_pos is not None:
+                            cv2.line(
+                                self.paint_window,
+                                self.last_pos,
+                                finger_pos,
+                                draw_color,
+                                brush_size * 2,
+                            )
+                        self.last_pos = finger_pos
+
                 if not is_drawing:
                     if self.prev_drawing:
-                        self.bpoints.append(deque(maxlen=1024))
-                        self.bindex += 1
-                        self.gpoints.append(deque(maxlen=1024))
-                        self.gindex += 1
-                        self.rpoints.append(deque(maxlen=1024))
-                        self.rindex += 1
-                        self.ypoints.append(deque(maxlen=1024))
-                        self.yindex += 1
                         self.save_to_history()
+                        self.last_pos = None
 
                 self.prev_drawing = is_drawing
 
             else:
                 if self.prev_drawing:
-                    self.bpoints.append(deque(maxlen=1024))
-                    self.bindex += 1
-                    self.gpoints.append(deque(maxlen=1024))
-                    self.gindex += 1
-                    self.rpoints.append(deque(maxlen=1024))
-                    self.rindex += 1
-                    self.ypoints.append(deque(maxlen=1024))
-                    self.yindex += 1
                     self.save_to_history()
+                    self.last_pos = None
                 self.prev_drawing = False
-
-            points = [self.bpoints, self.gpoints, self.rpoints, self.ypoints]
-            self.draw_points_on_canvas(self.paint_window, points, self.colors)
 
             # Overlay canvas on frame
             mask = np.any(self.paint_window != 255, axis=-1, keepdims=True)
