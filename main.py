@@ -1,3 +1,5 @@
+import sys
+import ctypes
 import cv2
 import numpy as np
 import mediapipe as mp
@@ -41,6 +43,14 @@ class AirPaintApp:
         self.mp_draw = mp.solutions.drawing_utils
 
         self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "Error: No supported webcam detected.",
+                "AirCanvas",
+                0x10,
+            )
+            sys.exit(1)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.WINDOW_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.WINDOW_HEIGHT)
 
