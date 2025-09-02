@@ -1,0 +1,7 @@
+AppName=Air Canvas
+Version=1.1.8
+Author=Khurram-Devs
+Github=github.com/Khurram-Devs/Air-Canvas
+Website=portfolio-khurram.netlify.app
+BuildDate=2025-09-01
+Description=Air Canvas lets you draw in the air using AI-powered hand tracking (OpenCV + Mediapipe). All saved drawings automatically embed a hidden watermark for authenticity.

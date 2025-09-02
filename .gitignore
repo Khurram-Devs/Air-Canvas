@@ -1,30 +1,40 @@
-icon.ico
+# Build files
+build/
+dist/
+*.spec
 
-# Python cache files
+# Application binaries
+*.exe
+*.msi
+
+# Python cache & artifacts
 __pycache__/
 *.py[cod]
 *.pyo
+*.pyd
+
+# Project output
+drawings/
 
 # Virtual environment
 venv/
-drawings/
 
-# OS specific files
+# OS-specific files
 .DS_Store
 Thumbs.db
 
-# IDE specific files
+# IDE/project settings
 .vscode/
 .idea/
 
-# Logs and temp files
+# Logs & temp files
 *.log
 *.tmp
 
-# Compiled files
+# Compiled binaries
 *.so
 *.dll
 *.exe
 
-# Environment files
+# Environment & secrets
 .env

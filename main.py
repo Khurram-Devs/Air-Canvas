@@ -1,5 +1,6 @@
 import sys
 import ctypes
+from ctypes import wintypes
 import cv2
 import numpy as np
 import mediapipe as mp
@@ -62,6 +63,56 @@ class AirPaintApp:
         self.prev_pinch = False
 
         self.create_paint_window()
+
+    def load_metadata(self, path="version.txt"):
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            base = sys._MEIPASS
+        else:
+            base = os.path.abspath(".")
+
+        full_path = os.path.join(base, path)
+
+        if not os.path.exists(full_path):
+            raise FileNotFoundError(f"{path} is missing at {full_path}")
+
+        meta = {}
+        with open(full_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    meta[k.strip()] = v.strip()
+        return meta
+
+
+    def safe_destroy_window(self, name):
+        """Destroy window only if it exists (prevents OpenCV NULL-pointer error)."""
+        try:
+            prop = cv2.getWindowProperty(name, cv2.WND_PROP_VISIBLE)
+        except cv2.error:
+            return
+        if prop >= 0:
+            try:
+                cv2.destroyWindow(name)
+            except cv2.error:
+                pass
+
+    def disable_maximize(self, window_name):
+        """Disable maximize & resize for an OpenCV window (Windows only)"""
+        hwnd = ctypes.windll.user32.FindWindowW(None, window_name)
+        if hwnd:
+            GWL_STYLE = -16
+            WS_MAXIMIZEBOX = 0x00010000
+            WS_THICKFRAME = 0x00040000
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_STYLE)
+            style &= ~WS_MAXIMIZEBOX
+            style &= ~WS_THICKFRAME
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_STYLE, style)
+            ctypes.windll.user32.SetWindowPos(
+                hwnd, 0, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0020
+            )
 
     def create_paint_window(self):
         """Create the paint canvas"""
@@ -378,14 +429,66 @@ class AirPaintApp:
             self.current_brush_size_index = size_index
 
     def save_drawing(self):
-        """Save the current drawing"""
+        """Save the current drawing with a watermark and popup."""
         if not os.path.exists("drawings"):
             os.makedirs("drawings")
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"drawings/air_paint_{timestamp}.png"
-        cv2.imwrite(filename, self.paint_window)
-        print(f"Drawing saved as {filename}")
+        filename = f"drawings/airCanvas_{timestamp}.png"
+
+        output = self.paint_window.copy()
+
+        # Load metadata from version.txt
+        meta = self.load_metadata()
+        app_name = meta.get("AppName", "AirCanvas")
+        github = meta.get("Github", "github.com/Khurram-Devs")
+        version = meta.get("Version", "1.0.0")
+
+        # 🔹 Dynamic watermark text
+        watermark = f"{github} - {app_name} v{version}"
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.4
+        thickness = 1
+
+        (text_w, text_h), _ = cv2.getTextSize(watermark, font, font_scale, thickness)
+        margin = 8
+        x = max(margin, output.shape[1] - text_w - margin)
+        y = output.shape[0] - margin
+
+        # Background box
+        cv2.rectangle(
+            output,
+            (x - 4, y - text_h - 4),
+            (x + text_w + 4, y + 4),
+            (255, 255, 255),
+            -1,
+        )
+        # Watermark text
+        cv2.putText(
+            output,
+            watermark,
+            (x, y),
+            font,
+            font_scale,
+            (50, 50, 50),
+            thickness,
+            cv2.LINE_AA,
+        )
+
+        cv2.imwrite(filename, output)
+
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                f"Drawing saved in:\n{os.path.abspath(filename)}",
+                f"✅ {app_name}",
+                0,
+            )
+        except Exception:
+            print(f"Drawing saved as {os.path.abspath(filename)}")
 
     def detect_gestures(self, landmarks, frame_shape):
         """Enhanced gesture detection"""
@@ -445,9 +548,15 @@ class AirPaintApp:
         """Show tool selection screen"""
         settings_window = np.ones((400, 600, 3), dtype=np.uint8) * 240
 
+        # Load metadata
+        meta = self.load_metadata()
+        app_name = meta.get("AppName", "Air Canvas")
+        version = meta.get("Version", "1.1.8")
+        github = meta.get("Github", "github.com/Khurram-Devs/Air-Canvas")
+
         cv2.putText(
             settings_window,
-            "AIR PAINT - TOOL SETTINGS",
+            f"{app_name} - TOOL SETTINGS",
             (120, 50),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
@@ -497,6 +606,7 @@ class AirPaintApp:
 
             self.tool_buttons.append((100, y - 15, 125, y + 10, key))
 
+        # START button
         self.draw_rounded_rectangle(
             settings_window, (250, 320), (350, 360), (100, 200, 100), -1, 8
         )
@@ -509,6 +619,27 @@ class AirPaintApp:
             0.7,
             (255, 255, 255),
             2,
+        )
+
+        # Metadata footer (GitHub + version)
+        footer_text = f"{github} | {app_name} v{version}"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.5
+        thickness = 1
+
+        (text_w, text_h), _ = cv2.getTextSize(footer_text, font, font_scale, thickness)
+        x = settings_window.shape[1] - text_w - 20
+        y = settings_window.shape[0] - 10
+
+        cv2.putText(
+            settings_window,
+            footer_text,
+            (x, y),
+            font,
+            font_scale,
+            (120, 120, 120),
+            thickness,
+            cv2.LINE_AA,
         )
 
         return settings_window
@@ -529,15 +660,19 @@ class AirPaintApp:
         """Mouse callback for settings screen"""
         if event == cv2.EVENT_LBUTTONDOWN:
             if self.handle_settings_click(x, y):
-                cv2.destroyWindow("Settings")
+                self.safe_destroy_window("Settings")
                 self.run_main_application()
 
     def run_settings(self):
         """Run the settings screen"""
         cv2.namedWindow("Settings")
+        self.disable_maximize("Settings")
         cv2.setMouseCallback("Settings", self.settings_mouse_callback)
 
         while True:
+            if cv2.getWindowProperty("Settings", cv2.WND_PROP_VISIBLE) < 1:
+                break
+
             settings_frame = self.show_settings_screen()
             cv2.imshow("Settings", settings_frame)
 
@@ -545,20 +680,28 @@ class AirPaintApp:
             if key == ord("q"):
                 break
             elif key == 13:
-                cv2.destroyWindow("Settings")
+                self.safe_destroy_window("Settings")
+
                 self.run_main_application()
                 break
 
-        cv2.destroyAllWindows()
+        self.safe_destroy_window("Settings")
 
     def run_main_application(self):
         """Run the main air paint application"""
         cv2.namedWindow("Paint", cv2.WINDOW_AUTOSIZE)
+        self.disable_maximize("Paint")
         cv2.namedWindow("Output", cv2.WINDOW_AUTOSIZE)
+        self.disable_maximize("Output")
 
         while True:
             ret, frame = self.cap.read()
             if not ret:
+                break
+
+            if cv2.getWindowProperty("Paint", cv2.WND_PROP_VISIBLE) < 1:
+                break
+            if cv2.getWindowProperty("Output", cv2.WND_PROP_VISIBLE) < 1:
                 break
 
             frame = cv2.flip(frame, 1)
@@ -658,7 +801,13 @@ class AirPaintApp:
     def cleanup(self):
         """Clean up resources"""
         self.cap.release()
-        cv2.destroyAllWindows()
+        self.safe_destroy_window("Paint")
+        self.safe_destroy_window("Output")
+        self.safe_destroy_window("Settings")
+        try:
+            cv2.destroyAllWindows()
+        except cv2.error:
+            pass
 
     def run(self):
         """Main entry point"""
